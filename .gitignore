@@ -1,6 +1,9 @@
 lib
 dist
 external
+.tmp-test
+data/
+temp/
 
 node_modules
 npm-debug.log

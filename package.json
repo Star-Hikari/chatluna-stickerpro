@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-chatluna-stickerpro",
-  "description": "为模型提供智能表情包收藏，发送工具",
-  "version": "0.0.1",
+  "description": "ChatLuna 表情包进阶插件：被动收集+判官评审入库、模型五工具（search/peek/send/save/update），peek 以 base64 内联让模型真的看见表情，自研内存向量索引零 WASM 冲突",
+  "version": "1.0.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -9,14 +9,54 @@
     "dist"
   ],
   "license": "MIT",
-  "scripts": {},
+  "homepage": "https://github.com/Star-Hikari/chatluna-stickerpro#readme",
+  "issues": "https://github.com/Star-Hikari/chatluna-stickerpro/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Star-Hikari/chatluna-stickerpro.git"
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs"
+  },
   "keywords": [
     "chatbot",
     "koishi",
-    "plugin"
+    "chatluna",
+    "plugin",
+    "sticker",
+    "napcat"
   ],
-  "devDependencies": {},
+  "dependencies": {
+    "@langchain/core": "^0.3.80",
+    "gifwrap": "^0.10.1",
+    "imghash": "^1.1.4",
+    "jimp": "^1.6.1",
+    "zod": "3.25.76"
+  },
   "peerDependencies": {
-    "koishi": "^4.18.7"
+    "koishi": "^4.18.7",
+    "koishi-plugin-chatluna": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "koishi": "^4.18.7",
+    "koishi-plugin-chatluna": "^1.4.0",
+    "typescript": "^5.4.0"
+  },
+  "koishi": {
+    "description": {
+      "zh": "表情包进阶：监听指定群聊自动收集表情（pHash 分段索引去重 + 判官模型评审），给模型四个工具——翻库（语义/关键词检索）、亲眼看图（base64 内联 observation）、发送（表情面板优先自动降级）、主动收藏；自研内存向量索引，无需 isolate-loader。",
+      "en": "Advanced sticker suite for ChatLuna: passive collection with pHash segment-index dedupe and LLM review, plus four agent tools (search / peek-with-real-image / send / save). in-memory vector index, no WASM conflicts."
+    },
+    "service": {
+      "required": [
+        "chatluna",
+        "database"
+      ],
+      "optional": [
+        "console"
+      ]
+    },
+    "preview": false
   }
 }
