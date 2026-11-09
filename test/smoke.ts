@@ -28,6 +28,7 @@ import {
   tokenize,
 } from '../src/utils'
 
+async function main() {
 let pass = 0
 let fail = 0
 function check(name: string, cond: boolean) {
@@ -216,3 +217,9 @@ check('非法 GIF 抽帧返回 null（调用方跳到下一级）', framesPayloa
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
+}
+
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

@@ -45,17 +45,18 @@ GIF 喂给判官模型时：≤5MB 原样直传（模型原生支持动图），
 
 ## 管理命令
 
-均为管理员权限（authority 2），`<ref>` 接受 pHash 前缀：
+均为管理员权限（authority 2），`<ref>` 接受 pHash 前缀。命令名在控制台显示为点号，
+聊天窗口里用空格输入：
 
 ```text
-chatluna.stickerpro/status                 # 库规模、评审状态分布、索引情况
-chatluna.stickerpro/list [keyword]         # 浏览收藏（关键词过滤，最近 20 张）
-chatluna.stickerpro/show <ref>             # 把某张表情发到当前会话预览
-chatluna.stickerpro/delete <ref> [-y]      # 删除（档案 + 文件 + 向量）
-chatluna.stickerpro/retry <ref>            # 重新评审 judge_failed 的记录
-chatluna.stickerpro/rebuild-index          # 全量重建语义向量
-chatluna.stickerpro/regen-desc <ref>       # 用当前提示词重新生成某张的档案
-chatluna.stickerpro/import [limit]         # 手动导入（见下）
+chatluna stickerpro status                 # 库规模、评审状态分布、索引情况
+chatluna stickerpro list [count] [keyword] # 浏览收藏（默认 10 张，可指定数量与关键词；上限 100）
+chatluna stickerpro show <ref>             # 把某张表情发到当前会话预览
+chatluna stickerpro delete <ref> [-y]      # 删除（档案 + 文件 + 向量）
+chatluna stickerpro retry <ref>            # 重新评审 judge_failed 的记录
+chatluna stickerpro rebuild-index          # 全量重建语义向量
+chatluna stickerpro regen-desc <ref>       # 用当前提示词重新生成某张的档案
+chatluna stickerpro import [limit]         # 手动导入（见下）
 ```
 
 ## 发送形式说明
@@ -70,13 +71,14 @@ chatluna.stickerpro/import [limit]         # 手动导入（见下）
 支持相对图片库目录或绝对路径；格式 png/jpg/gif/webp/bmp/avif/heic），执行：
 
 ```text
-chatluna.stickerpro.import        # 全部导入
-chatluna.stickerpro.import 10     # 只处理前 10 张（按文件名自然排序）
-chatluna.stickerpro.import -r     # 重新生成已有图片的描述与标签（提示词升级后用）
+chatluna stickerpro import        # 全部导入
+chatluna stickerpro import 10     # 只处理前 10 张（按文件名自然排序）
+chatluna stickerpro import -r     # 重新生成已有图片的描述与标签（提示词升级后用）
 ```
 
 - 导入**不经过评审**，但会调用判官模型（`review.model`）生成 description/tags/usageHint；
 - 按 pHash 去重：库里已有的图自动跳过，重复执行安全；`-r` 则更新已有档案不动 note/source；
+- 聊天窗口只回一条“已成功导入 X 张”（刷新为“已成功更新 X 张”），逐张描述与失败明细在日志里；
 - 原图原字节入库，`note` 记录原文件名，`source` 标记为 `manual`；
 - 原文件保留在 `temp/` 目录，确认无误后可自行清理。
 
@@ -86,3 +88,21 @@ chatluna.stickerpro.import -r     # 重新生成已有图片的描述与标签�
 node scripts/build.cjs    # 产出 lib/（CommonJS + d.ts，含类型检查）
 node ../../node_modules/tsx/dist/cli.mjs test/smoke.ts   # 冒烟测试（纯函数 + 文案断言）
 ```
+
+## 更新日志
+
+### 1.1.0
+
+- **模型重试修复**：`Judge.start()` / `SemanticIndex.start()` 不再被一次性 `started` 掩码锁死；新增
+  `chatluna/model-added` 事件驱动 + 3s×10 兜底，判官/向量模型晚就绪时也能恢复。
+- **构建修复**：不再生成 `lib/package.json`，修复其 UTF-8 BOM 导致 ChatLuna `createModel`
+  报 “model not found” 的问题；`prepack` 强制打包前构建并清理旧文件。
+- **手动导入**：新增 `storage.importDir` 配置（支持相对/绝对路径）与 `--refresh`；
+  聊天回执不再显示真实路径，只回“已成功导入/更新 X 张”，逐张明细写日志。
+- **命令层级修正**：所有管理命令统一为 `chatluna.stickerpro.*`（聊天输入
+  `chatluna stickerpro ...`），不再暴露裸命令；根命令补齐描述，`list` 默认显示 10 张、
+  支持 `list <数量> [关键词]`。
+
+### 1.0.0
+
+- 插件首次发布

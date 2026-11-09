@@ -66,4 +66,12 @@ for (const file of fs.readdirSync(srcDir)) {
   count++
 }
 
+// ── 3. 清理 lib/package.json ──
+// 根 package.json 没有 "type" 字段，Node 默认按 CommonJS 处理，不需要 lib 下再放一份标记。
+// 历史遗留的 lib/package.json 曾带 UTF-8 BOM（{"type":"commonjs"}），ChatLuna 的
+// usage_source 会 JSON.parse 最近的 package.json，遇到 BOM 直接抛 SyntaxError，
+// 导致 createModel 报 "model not found"；这里每次构建都删掉，避免再次被打包。
+const staleLibPkg = path.join(outDir, 'package.json')
+if (fs.existsSync(staleLibPkg)) fs.rmSync(staleLibPkg, { force: true })
+
 console.log(`built ${count} modules → lib/ (CommonJS + d.ts)`)

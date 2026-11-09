@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-chatluna-stickerpro",
   "description": "ChatLuna 表情包进阶插件：被动收集+判官评审入库、模型五工具（search/peek/send/save/update），peek 以 base64 内联让模型真的看见表情，自研内存向量索引零 WASM 冲突",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -16,7 +16,8 @@
     "url": "git+https://github.com/Star-Hikari/chatluna-stickerpro.git"
   },
   "scripts": {
-    "build": "node scripts/build.cjs"
+    "build": "node scripts/build.cjs",
+    "prepack": "node scripts/build.cjs"
   },
   "keywords": [
     "chatbot",
