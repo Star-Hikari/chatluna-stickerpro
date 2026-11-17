@@ -25,6 +25,8 @@ export interface Config {
     dir: string
     /** 手动导入目录：相对 storage.dir 或绝对路径（默认 temp） */
     importDir: string
+    /** 手动导入入库时的 note 模板（{file} 替换为文件名；留空不写 note） */
+    importNote: string
   }
   collect: {
     enabled: boolean
@@ -37,7 +39,7 @@ export interface Config {
   review: {
     enabled: boolean
     model: string
-    activeGate: boolean
+    saveDescribeFallback: boolean
     promptTemplate: string
     dupBlockTemplate: string
     describePrompt: string
@@ -76,6 +78,9 @@ const StorageGroup = Schema.object({
   importDir: Schema.string()
     .default('temp')
     .description('手动导入目录：相对图片库目录，或填绝对路径；导入命令会扫描这里的图片。'),
+  importNote: Schema.string()
+    .default('手动导入：{file}')
+    .description('手动导入入库时写入的 note 模板，{file} 会替换成文件名；留空则不写 note。'),
 }).description('存储')
 
 // ───────── 分组 2：被动收集 ─────────
@@ -88,7 +93,7 @@ const CollectGroup = Schema.object({
   threshold: Schema.number()
     .default(5)
     .min(1)
-    .description('同一张图（pHash 汉明合并后）全局累计出现达到此次数才提交评审——便宜地数、贵地判。'),
+    .description('同一张图全局累计出现达到此次数才提交评审——便宜地数、贵地判。'),
   ttlDays: Schema.number()
     .default(10)
     .min(0)
@@ -112,8 +117,12 @@ const ReviewGroup = Schema.object({
   enabled: Schema.boolean().default(true).description('关闭后达到阈值直接入库，不再调用判官模型评审。'),
   model: Schema.dynamic('model')
     .default('无')
-    .description('评审/描述用多模态模型（ChatLuna 已加载模型下拉）。必须支持图片输入；"无"=不评审不描述。'),
-  activeGate: Schema.boolean().default(true).description('模型主动收藏（sticker_save）是否也要过评审。关闭=主动收的一律入库。'),
+    .description('评审/描述用多模态模型。必须支持图片输入；"无"=不评审不描述。'),
+  saveDescribeFallback: Schema.boolean()
+    .default(false)
+    .description(
+      '主动收藏兜底：检测到当前聊天模型不支持图片输入时，改用判官模型生成图片描述（默认关，档案由模型亲笔写）。',
+    ),
   promptTemplate: Schema.string()
     .role('textarea')
     .default(REVIEW_PROMPT_DEFAULT)
@@ -147,7 +156,7 @@ const LibraryGroup = Schema.object({
     .default(1000)
     .min(1)
     .max(10000)
-    .description('收藏上限。超过后按最后使用时间淘汰最久未使用的（保护新收藏不被立刻挤掉）。'),
+    .description('收藏上限。超过后按最后使用时间淘汰最久未使用的。'),
 }).description('表情库')
 
 // ───────── 分组 5：语义检索 ─────────

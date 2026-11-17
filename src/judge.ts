@@ -25,6 +25,8 @@ export interface JudgeVerdict {
   error?: string
   /** 模型明确不支持图片输入 */
   visionUnsupported?: boolean
+  /** 档案作者：判官路径默认 review.model；主动收藏由聊天模型亲笔写时传 chat:<模型名> */
+  descModel?: string
 }
 
 function contentToText(content: any): string {

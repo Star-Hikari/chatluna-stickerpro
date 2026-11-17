@@ -105,6 +105,9 @@ export async function importImageDirectory(
 
       const saved = await storage.saveImage(canonical, bytes)
       const now = Date.now()
+      // note 模板可配置（storage.importNote），{file} 替换为文件名；留空则不写 note
+      const noteTemplate = (config.storage.importNote ?? '手动导入：{file}').trim()
+      const importNote = noteTemplate.replaceAll('{file}', file)
       const patch: Partial<MetaRow> = {
         description: profile.description,
         tags: profile.tags,
@@ -114,7 +117,7 @@ export async function importImageDirectory(
       if (!existed) {
         patch.source = 'manual'
         patch.collectedAt = now
-        patch.note = `手动导入：${file}`
+        if (importNote) patch.note = importNote
       }
       await library.upsertMeta(canonical, patch)
       await library.registerCollected(canonical, saved.mime || mime, saved.ext || imageExtension(mime))
@@ -124,6 +127,7 @@ export async function importImageDirectory(
             description: profile.description,
             usageHint: profile.usageHint || '',
             tags: profile.tags,
+            note: existed?.note || importNote,
           })
           .catch(() => {})
       }

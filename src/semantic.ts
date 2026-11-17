@@ -9,9 +9,9 @@ import type { Config } from './config'
 import type { StickerLibrary } from './library'
 import { Semaphore, decodeVector, dot, encodeVector, isTransientNetworkError, l2normalize, sleep } from './utils'
 
-/** 档案文本：description + usageHint + tags（同旧插件口径，换模型时重算依据） */
-export function profileText(m: { description: string; usageHint: string; tags: string[] }): string {
-  return [m.description || '', m.usageHint || '', (m.tags || []).join(' ')].join(' ').trim()
+/** 档案文本：description + usageHint + tags + note（note 弱权重，仅补充个人语境） */
+export function profileText(m: { description: string; usageHint: string; tags: string[]; note?: string }): string {
+  return [m.description || '', m.usageHint || '', (m.tags || []).join(' '), m.note || ''].join(' ').trim()
 }
 
 export interface SemanticHit {
@@ -159,7 +159,10 @@ export class SemanticIndex {
   }
 
   /** 收藏/更新档案时调用：重算该条向量 */
-  async upsert(pHash: string, profile: { description: string; usageHint: string; tags: string[] }): Promise<boolean> {
+  async upsert(
+    pHash: string,
+    profile: { description: string; usageHint: string; tags: string[]; note?: string },
+  ): Promise<boolean> {
     if (!this.embeddings) return false
     const v = await this.embedText(profileText(profile))
     if (!v) return false

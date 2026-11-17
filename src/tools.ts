@@ -23,6 +23,7 @@ import {
   TOOL_REGISTRY_DESCRIPTIONS,
 } from './prompt'
 import { CHATLUNA_STORAGE_PREFIX, fetchImageBytes, sniffImageMime } from './utils'
+import type { SearchField } from './utils'
 
 export type { ToolsDeps } from './commit'
 
@@ -91,11 +92,15 @@ async function pickCandidates(
   limit: number,
   convKey: string,
   tags?: string[],
+  field?: SearchField,
 ): Promise<{ candidates: { pHash: string; score: number; matchMode: 'semantic' | 'keyword' }[]; mode: string }> {
   const { config, library, semantic, logger } = deps
   const exclude = new Set(await library.recentSent(convKey))
+  const fieldLabel =
+    field === 'tags' ? '标签' : field === 'description' ? '描述' : field === 'usage' ? '使用时机' : field === 'note' ? '备注' : ''
 
-  if (config.semantic.enabled && semantic.ready) {
+  // 指定了字段就只在关键词层找（语义索引不区分字段，note 也不在向量里）
+  if (config.semantic.enabled && semantic.ready && (!field || field === 'any')) {
     const hits = await semantic.search(query, limit + exclude.size, config.semantic.minSimilarity)
     if (hits && hits.length) {
       const kept = await filterByTags(deps, hits.filter((h) => !exclude.has(h.pHash)).map((h) => h.pHash), tags)
@@ -114,10 +119,10 @@ async function pickCandidates(
     }
     logger.debug('[tools] 语义无命中/低于阈值，回退关键词')
   }
-  const kw = await library.searchByKeyword(query, { limit: limit + exclude.size, exclude, tags })
+  const kw = await library.searchByKeyword(query, { limit: limit + exclude.size, exclude, tags, field })
   return {
     candidates: kw.slice(0, limit).map((c) => ({ pHash: c.meta.pHash, score: c.score, matchMode: 'keyword' as const })),
-    mode: kw.length ? '关键词匹配' : '（无命中，随机兜底）',
+    mode: kw.length ? `关键词匹配${fieldLabel ? `（${fieldLabel}）` : ''}` : '（无命中，随机兜底）',
   }
 }
 
@@ -167,12 +172,15 @@ export function registerTools(deps: ToolsDeps): void {
     meta: toolMeta(['search']),
     createTool: () =>
       tool(
-        async (input: { query: string; limit?: number; tags?: string[] }, runConfig: any) => {
+        async (
+          input: { query: string; limit?: number; tags?: string[]; field?: SearchField },
+          runConfig: any,
+        ) => {
           const session: Session | undefined = runConfig?.configurable?.session
           if (!session) return '现在没在任何一个聊天里，先别翻表情了。'
           const convKey = conversationKey(session, runConfig?.configurable?.agentContext)
           const limit = Math.min(Math.max(1, input.limit ?? 8), 20)
-          const { candidates, mode } = await pickCandidates(deps, input.query, limit, convKey, input.tags)
+          const { candidates, mode } = await pickCandidates(deps, input.query, limit, convKey, input.tags, input.field)
           const list = candidates.length
             ? candidates
             : await fallbackRandom(deps, new Set(await library.recentSent(convKey)), limit)
@@ -188,8 +196,11 @@ export function registerTools(deps: ToolsDeps): void {
             const tagText = (meta?.tags || []).join('/')
             const info = await storage.statImage(list[i].pHash)
             const kb = info ? Math.max(1, Math.round(info.size / 1024)) : 0
+            const hint = meta?.usageHint || ''
+            const note = meta?.note || ''
             lines.push(
-              `- ${ref}｜${list[i].pHash.slice(0, 8)}｜${meta?.description || '(没写描述)'}｜tag：${tagText || '无'}｜${kb}KB｜来源：${meta?.source || '未知'}`,
+              `- ${ref}｜${list[i].pHash.slice(0, 8)}｜${meta?.description || '(没写描述)'}｜tag：${tagText || '无'}` +
+                `${hint ? `｜时机：${hint}` : ''}${note ? `｜备注：${note}` : ''}｜${kb}KB｜来源：${meta?.source || '未知'}`,
             )
           }
           if (list.length) touch(lockedStore, convKey, list[0].pHash)
@@ -206,6 +217,10 @@ export function registerTools(deps: ToolsDeps): void {
             query: z.string().describe('想要的情绪/场景关键词，如"嘲笑""开心""无语""点赞"'),
             limit: z.number().int().min(1).max(20).optional().describe('最多列几个候选，默认 8'),
             tags: z.array(z.string()).optional().describe('按标签收窄（如 ["无语","猫"]），任一命中即可'),
+            field: z
+              .enum(['any', 'tags', 'description', 'usage', 'note'])
+              .optional()
+              .describe('只在某个字段里找：tags=标签、description=画面描述、usage=使用时机、note=备注；不填=全字段加权'),
           }),
         },
       ),
@@ -344,7 +359,12 @@ export function registerTools(deps: ToolsDeps): void {
                   descModel: config.review.model,
                 })
                 void semantic
-                  .upsert(pHash, { description: d.description, usageHint: nextUsage, tags: d.tags })
+                  .upsert(pHash, {
+                    description: d.description,
+                    usageHint: nextUsage,
+                    tags: d.tags,
+                    note: meta.note,
+                  })
                   .catch(() => {})
               }
             }
@@ -354,7 +374,7 @@ export function registerTools(deps: ToolsDeps): void {
                 : !config.peek.inline
                   ? '看图内联被关了'
                   : sendBytes.length > maxBytes
-                    ? '这张图太大装不进眼前'
+                    ? '这张图太大了没有加载出来'
                     : '今天的看图预算用完了'
             notes.push(`${pHash.slice(0, 8)} 的文字档案：${desc || meta.usageHint || '(还没有描述)'}。${why}，${OBSERVATION_HINTS.textOnly}`)
           }
@@ -454,7 +474,16 @@ export function registerTools(deps: ToolsDeps): void {
     meta: toolMeta(['save']),
     createTool: () =>
       tool(
-        async (input: { target?: 'reply' | 'latest'; note?: string }, runConfig: any) => {
+        async (
+          input: {
+            target?: 'reply' | 'latest'
+            description?: string
+            tags?: string[]
+            usageHint?: string
+            note?: string
+          },
+          runConfig: any,
+        ) => {
           const session: Session | undefined = runConfig?.configurable?.session
           if (!session) return '现在没在任何一个聊天里，收不了图。'
           const convKey = conversationKey(session, runConfig?.configurable?.agentContext)
@@ -472,6 +501,9 @@ export function registerTools(deps: ToolsDeps): void {
             const qEls = Array.isArray(quote.elements) ? quote.elements : quote.message?.elements
             urls = qEls ? extractImageSources(qEls) : []
             sourceHint = '引用的那张'
+            if (!urls.length) {
+              return '你引用的那条消息里没有图片，收不了。确认引用的是带图的消息，或改用 latest。'
+            }
           } else {
             urls = extractImageSources(session.elements as readonly any[])
             sourceHint = '刚发的这张'
@@ -484,6 +516,7 @@ export function registerTools(deps: ToolsDeps): void {
                 (item) => item.userId === session.userId && now - item.at <= 5 * 60_000,
               )
               const picked = mine.length ? mine : recent
+              // picked 已经是新→旧，取前 3 个即为"最新优先"
               urls = picked.map((item) => item.url)
               sourceHint = mine.length ? '刚发的' : '最近收到的'
               if (picked.length) {
@@ -497,10 +530,10 @@ export function registerTools(deps: ToolsDeps): void {
             return '这次没能从消息里拿到图片：当前消息没有图，也没找到这个会话最近含图的记录。可以让对方再发一次，或引用那张图再让我收。'
           }
 
-          // 依次尝试最近几张：某张地址失效（NapCat 缓存过期等）时顺延，而不是直接失败
+          // 候选已按优先级排好（reply=消息内顺序；latest=新→旧），某张地址失效时顺延下一张
           let bytes: Buffer | null = null
           const failures: string[] = []
-          for (const candidate of urls.slice(-3).reverse()) {
+          for (const candidate of urls.slice(0, 3)) {
             const got = await fetchImageBytes(candidate, deps.ctx.http as any, config.collect.maxDownloadKb * 1024, {
               allowedFileRoots: [config.storage.dir],
               // chatluna-storage 的临时图床在本机（端口 5140 之类），只对它的路径前缀放行回环
@@ -532,46 +565,54 @@ export function registerTools(deps: ToolsDeps): void {
             return `这张库里已经有了（${canonical.slice(0, 8)}：${existed.description || '没写描述'}），不用重复收。`
           }
 
-          const saved = await storage.saveImage(canonical, bytes)
+          await storage.saveImage(canonical, bytes)
           // 已成功落盘，把用过的候选移出缓存，避免下一次 latest 又取到同一张
           forgetImages(session, urls)
+
+          // 档案由我（聊天模型）亲笔写，判官不代笔：description 是必填的自我描述。
+          // 兜底：模型明确不支持图片输入（且开启 saveDescribeFallback）时，描述/标签改由判官生成。
+          let description = (input.description ?? '').trim()
+          let tags = (input.tags ?? []).map((t) => String(t).trim()).filter(Boolean).slice(0, 8)
+          let usageHint = (input.usageHint ?? '').trim()
           const note = input.note?.trim() || undefined
-          if (config.review.activeGate && config.review.enabled && judge.hasModel) {
-            const verdict = await judge.judgeOne(canonical, bytes, mime)
-            if (verdict.collect) {
-              verdict.note = note
-              await commitCollected(deps, canonical, verdict, 'active')
-              const ref = `r${refs.size + 1}`
-              refs.set(ref, canonical)
-              touch(lockedStore, convKey, canonical)
-              return `我把这张收进库里了（${ref}｜${canonical.slice(0, 8)}）：${verdict.description || '没写描述'}`
-            }
-            await library.setOccurrenceStatus(canonical, 'rejected', {
-              judgeError: verdict.duplicateOf ? `dupOf ${verdict.duplicateOf}` : verdict.error || '评审未通过',
-            })
-            // 只有本次真正落盘的文件才删（已有文件可能被被动收集引用，删了会让那条记录再也评审不了）
-            if (saved.saved) await storage.removeImage(canonical)
-            return verdict.duplicateOf
-              ? `这张和库里 ${verdict.duplicateOf.slice(0, 8)} 那张是重复的，我没再收。`
-              : '这张我过目后觉得不太合适收（可能尺度或质量问题），就让它留在聊天里吧。'
-          }
-          // 不把关：直接入库，尽力补档案
-          let description = ''
-          let tags: string[] = []
-          let usageHint = ''
-          if (judge.hasModel) {
+          const rawModel = runConfig?.configurable?.model
+          const modelId =
+            typeof rawModel === 'string'
+              ? rawModel
+              : rawModel?.modelName || rawModel?.model || rawModel?.modelId || ''
+          let descModel: string = `chat:${modelId || 'unknown'}`
+          if (config.review.saveDescribeFallback && modelImageSupport(runConfig) === false && judge.hasModel) {
             const d = await judge.describe(bytes, mime)
             if (d) {
-              description = d.description
-              tags = d.tags
-              usageHint = d.usageHint
+              if (d.description) description = d.description
+              if (d.tags.length) tags = d.tags.slice(0, 8)
+              if (d.usageHint) usageHint = d.usageHint
+              descModel = config.review.model
+              deps.logger.debug(`[save] 当前模型不支持图片输入，描述已由判官兜底生成（${canonical.slice(0, 8)}）`)
             }
           }
-          await commitCollected(deps, canonical, { collect: true, description, tags, usageHint, note }, 'active')
+          await commitCollected(
+            deps,
+            canonical,
+            {
+              collect: true,
+              description,
+              tags,
+              usageHint,
+              note,
+              descModel,
+            },
+            'active',
+          )
           const ref = `r${refs.size + 1}`
           refs.set(ref, canonical)
           touch(lockedStore, convKey, canonical)
-          return `我把这张收进库里了（${ref}｜${canonical.slice(0, 8)}）${description ? `：${description}` : ''}`
+          return (
+            `我把这张收进库里了（${ref}｜${canonical.slice(0, 8)}，${sourceHint}）：${description || '(没写描述)'}` +
+            (tags.length ? `｜标签：${tags.join('/')}` : '') +
+            (usageHint ? `｜时机：${usageHint}` : '') +
+            '。这是我亲手记录的，之后想到更合适的写法可以更新。'
+          )
         },
         {
           name: 'sticker_save',
@@ -581,7 +622,16 @@ export function registerTools(deps: ToolsDeps): void {
               .enum(['reply', 'latest'])
               .optional()
               .describe('收引用消息里的图（reply，默认）还是最近收到的图（latest，当前消息没图时会回看最近记录）'),
-            note: z.string().max(200).optional().describe('可选备注：为什么收它（独立保存，不影响检索）'),
+            description: z
+              .string()
+              .min(1)
+              .max(300)
+              .describe(
+                '必填：用一句话写下你真实看到的画面、氛围和画面里的文字（这张表情以后主要靠它被检索到）；除非明确知道人物是谁，否则不要写推测的角色名或出处',
+              ),
+            tags: z.array(z.string()).optional().describe('3-6 个情绪/场景短词，如 ["无语","猫"]'),
+            usageHint: z.string().max(120).optional().describe('一句话：什么聊天场景发这张最合适'),
+            note: z.string().max(200).optional().describe('可选：为什么收它（可以结合当前聊天内容，按我的看法简单写一点）'),
           }),
         },
       ),
@@ -635,6 +685,7 @@ export function registerTools(deps: ToolsDeps): void {
                 description: updated.description,
                 usageHint: updated.usageHint,
                 tags: updated.tags,
+                note: updated.note,
               })
               .catch(() => {})
           }

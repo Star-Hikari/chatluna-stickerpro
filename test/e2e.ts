@@ -92,7 +92,6 @@ const baseConfig = {
   review: {
     enabled: true,
     model: 'mock/model',
-    activeGate: true,
     promptTemplate: 'x {{DUP_BLOCK}}',
     dupBlockTemplate: 'dup:\n{{DUP_LIST}}',
     describePrompt: 'd',

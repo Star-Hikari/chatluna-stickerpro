@@ -48,9 +48,26 @@ check('2-gram 齐全', t1.includes('开心') && t1.includes('心可') && t1.incl
 const t2 = tokenize('疑惑 问号，嗯')
 check('标点/空格切段', t2.includes('疑惑') && t2.includes('问号') && t2.includes('嗯'))
 
-// ── keywordScore：方向是"库文本包含搜索 token"──
-check('tag 命中 > 文本命中', keywordScore(['无语'], ['无语'], '这扯不扯', '') > keywordScore(['无语'], [], '他很无语', ''))
-check('无命中为 0', keywordScore(['吃饭'], ['摸鱼'], '哈哈', '') === 0)
+// ── keywordScore：方向是"库文本包含搜索 token"；分字段加权 tag×3 描述×2 时机×2 备注×1 ──
+check(
+  'tag 命中 > 描述命中',
+  keywordScore(['无语'], { tags: ['无语'], description: '这扯不扯', usageHint: '' }) >
+    keywordScore(['无语'], { tags: [], description: '他很无语', usageHint: '' }),
+)
+check('无命中为 0', keywordScore(['吃饭'], { tags: ['摸鱼'], description: '哈哈', usageHint: '' }) === 0)
+check(
+  'note 字段可单独检索',
+  keywordScore(['吐槽'], { tags: [], description: '', usageHint: '' }, 'note') === 0 &&
+    keywordScore(['吐槽'], { tags: [], description: '', usageHint: '', note: '吐槽专用' }, 'note') === 1,
+)
+check(
+  'any 模式描述+备注累加',
+  keywordScore(['无语'], { tags: [], description: '很无语', usageHint: '', note: '无语' }) === 3,
+)
+check(
+  'tags 字段单独检索不受描述干扰',
+  keywordScore(['无语'], { tags: [], description: '很无语', usageHint: '' }, 'tags') === 0,
+)
 
 // ── hamming ──
 check('同哈希=0', hamming('c3c3c1cb9f03871d', 'c3c3c1cb9f03871d') === 0)

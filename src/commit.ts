@@ -40,14 +40,20 @@ export async function commitCollected(
     description: verdict.description,
     usageHint: verdict.usageHint,
     source,
-    descModel: verdict.description ? config.review.model : '',
+    // 主动收藏由聊天模型亲笔写档案（verdict.descModel = chat:<模型名>）；判官路径默认 review.model
+    descModel: verdict.descModel ?? (verdict.description ? config.review.model : ''),
     // note 只在本次显式提供时写入：被动评审不能把主动收藏留的备注清空
     ...(verdict.note ? { note: verdict.note } : {}),
   })
   await library.setOccurrenceStatus(pHash, 'collected')
   if (config.semantic.enabled && (verdict.description || verdict.usageHint || verdict.tags.length)) {
     void semantic
-      .upsert(pHash, { description: verdict.description, usageHint: verdict.usageHint, tags: verdict.tags })
+      .upsert(pHash, {
+        description: verdict.description,
+        usageHint: verdict.usageHint,
+        tags: verdict.tags,
+        note: verdict.note,
+      })
       .catch(() => {})
   }
   await library.enforceLibraryLimit((ph) => deps.storage.removeImage(ph)).catch(() => {})

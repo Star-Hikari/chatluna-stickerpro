@@ -142,7 +142,14 @@ export function registerCommands(deps: CmdDeps): void {
         usageHint: d.usageHint || hit.usageHint,
         descModel: config.review.model,
       })
-      await semantic.upsert(hit.pHash, { description: d.description, usageHint: d.usageHint || hit.usageHint, tags: d.tags }).catch(() => {})
+      await semantic
+        .upsert(hit.pHash, {
+          description: d.description,
+          usageHint: d.usageHint || hit.usageHint,
+          tags: d.tags,
+          note: hit.note,
+        })
+        .catch(() => {})
       return `新档案：${d.description}（tags：${d.tags.join('/')}；时机：${d.usageHint || '—'}）`
     })
 

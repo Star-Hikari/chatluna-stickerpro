@@ -10,6 +10,7 @@ import imghash from 'imghash'
 import type { Config } from './config'
 import type { DeliveryChannel, MetaRow, OccurrenceRow, StickerSource, StickerStatus } from './types'
 import { SegmentIndex, keywordScore, phashSegments, tokenize } from './utils'
+import type { SearchField } from './utils'
 
 export interface CollectedCandidate {
   meta: MetaRow
@@ -301,12 +302,12 @@ export class StickerLibrary {
   // ───────── 选图（issue #1 根治，设计 §8）─────────
 
   /**
-   * 关键词候选：全库排除会话冷却集合 → 2-gram 打分（tag×3 文本×1）→ 同分随机洗牌。
-   * ⚠️ 不使用 useCount 参与排序——这是旧版"永远同一张"的根因。
+   * 关键词候选：全库排除会话冷却集合 → 分字段加权打分（tag×3 描述×2 时机×2 备注×1）→ 同分随机洗牌。
+   * field 指定时只在对应字段里找；⚠️ 不使用 useCount 参与排序——这是旧版"永远同一张"的根因。
    */
   async searchByKeyword(
     query: string,
-    opts: { limit?: number; exclude?: Set<string>; tags?: string[] } = {},
+    opts: { limit?: number; exclude?: Set<string>; tags?: string[]; field?: SearchField } = {},
   ): Promise<CollectedCandidate[]> {
     const tokens = tokenize(query)
     const wantedTags = (opts.tags ?? []).map((t) => String(t).trim().toLowerCase()).filter(Boolean)
@@ -320,7 +321,13 @@ export class StickerLibrary {
       })
       .map((m) => ({
         meta: m,
-        score: tokens.length ? keywordScore(tokens, m.tags || [], m.description, m.usageHint) : 0,
+        score: tokens.length
+          ? keywordScore(
+              tokens,
+              { tags: m.tags || [], description: m.description, usageHint: m.usageHint, note: m.note },
+              opts.field ?? 'any',
+            )
+          : 0,
         matchMode: 'keyword' as const,
       }))
       .filter((x) => x.score > 0)

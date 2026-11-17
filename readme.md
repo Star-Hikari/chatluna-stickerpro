@@ -3,8 +3,8 @@
 [![npm](https://img.shields.io/npm/v/koishi-plugin-chatluna-stickerpro?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-chatluna-stickerpro)
 
 为模型提供智能表情包收藏与发送工具：被动收集群里的表情（pHash 去重 + 判官模型评审），
-五个模型工具——`sticker_search`（语义/关键词检索）、`sticker_peek`（base64 内联，真的看见图）、
-`sticker_send`（NapCat 私聊/群聊以表情包形式发送，失败自动降级图片）、`sticker_save`（主动收藏）、
+五个模型工具——`sticker_search`（多角度检索：描述/标签/时机/备注）、`sticker_peek`（base64 内联，真的看见图）、
+`sticker_send`（NapCat 私聊/群聊以表情包形式发送，失败自动降级图片）、`sticker_save`（主动收藏并由模型亲笔建档）、
 `sticker_update`（模型自己修正描述/标签/使用时机）。
 表情档案刻意保持"简洁"：只记氛围、用途与可见文字，不猜角色身份或作品来源；细节由主模型自己看图确认。
 自研内存向量索引，无 WASM 并发问题，不需要 isolate-loader。
@@ -33,7 +33,7 @@
 | --- | --- |
 | 存储 | 图片库目录、手动导入目录 |
 | 被动收集 | 开关、群列表、计数阈值、pHash 合并半径、记录 TTL |
-| 评审与档案 | 评审开关、判官模型、可自定义的评审/描述提示词、主动收藏是否把关 |
+| 评审与档案 | 评审开关、判官模型、无视觉模型的主动收藏描述兜底（默认关）、可自定义的评审/描述提示词 |
 | 表情库 | 收藏上限（LRU 淘汰） |
 | 语义检索 | 向量模型、相似度阈值 |
 | 发送 | 表情包形式/图片形式、同会话防重复冷却 |
@@ -78,6 +78,7 @@ chatluna stickerpro import -r     # 重新生成已有图片的描述与标签�
 
 - 导入**不经过评审**，但会调用判官模型（`review.model`）生成 description/tags/usageHint；
 - 按 pHash 去重：库里已有的图自动跳过，重复执行安全；`-r` 则更新已有档案不动 note/source；
+- note 模板可在「存储 → 手动导入 note 模板」自定义（`{file}` 会替换成文件名，留空则不写 note）；
 - 聊天窗口只回一条“已成功导入 X 张”（刷新为“已成功更新 X 张”），逐张描述与失败明细在日志里；
 - 原图原字节入库，`note` 记录原文件名，`source` 标记为 `manual`；
 - 原文件保留在 `temp/` 目录，确认无误后可自行清理。
@@ -90,6 +91,23 @@ node ../../node_modules/tsx/dist/cli.mjs test/smoke.ts   # 冒烟测试（纯函
 ```
 
 ## 更新日志
+
+### 1.2.0
+
+- **主动收藏亲笔建档**：`sticker_save` 不再让判官代写档案——模型以第一人称直接提交
+  `description`（必填）/`tags`/`usageHint`/`note`，`descModel` 记为 `chat:<模型名>`；
+  移除「主动收藏是否过评审」配置项；取图候选顺延规则改为"最新优先"。
+- **主动收藏描述兜底**：新增 `review.saveDescribeFallback`（默认关）——检测到当前聊天模型
+  不支持图片输入时，描述/标签改由判官模型生成（note 仍归模型），`descModel` 记为判官模型。
+- **建档防臆测**：工具说明与参数描述提醒模型——除非明确知道图中人物是谁，
+  否则不要在描述/标签里写推测的角色名、作品或出处。
+- **本地路径取图修复**：Windows 盘符路径（`E:\...`）此前被协议正则误判为 URL scheme，
+  `fetchImageBytes` 现在先判盘符再判 scheme，NapCat 给出的本地路径可以正常取图。
+- **搜索多角度**：`sticker_search` 新增 `field` 参数（tags/description/usage/note），
+  关键词打分改为分字段加权（tag×3、描述×2、时机×2、备注×1）；结果行附带使用时机与备注；
+  语义档案文本纳入 note。
+- **手动导入 note 模板**：新增 `storage.importNote`（默认 `手动导入：{file}`，`{file}` 替换为
+  文件名，留空则不写 note），可在配置里改成任意提示语。
 
 ### 1.1.0
 

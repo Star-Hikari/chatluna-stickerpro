@@ -46,17 +46,40 @@ export function tokenize(text: string): string[] {
   return [...out]
 }
 
+/** 检索字段：any=全字段加权；其余只在对应字段里找 */
+export type SearchField = 'any' | 'tags' | 'description' | 'usage' | 'note'
+
 /**
  * 关键词打分（方向：判断"搜索词的 token 是否出现在库文本里"，与旧插件相反）。
- * tag 命中 ×3，描述/使用提示命中 ×1。
+ * 分字段加权：tag ×3、描述 ×2、使用时机 ×2、备注 ×1；指定 field 时只在该字段里找。
  */
-export function keywordScore(tokens: string[], tags: string[], description: string, usageHint: string): number {
-  const tagHay = tags.join(' ').toLowerCase()
-  const textHay = `${description || ''} ${usageHint || ''}`.toLowerCase()
+export function keywordScore(
+  tokens: string[],
+  fields: { tags: string[]; description: string; usageHint: string; note?: string },
+  field: SearchField = 'any',
+): number {
+  const tagHay = (fields.tags || []).join(' ').toLowerCase()
+  const descHay = (fields.description || '').toLowerCase()
+  const usageHay = (fields.usageHint || '').toLowerCase()
+  const noteHay = (fields.note || '').toLowerCase()
   let score = 0
   for (const kw of tokens) {
-    if (kw && tagHay.includes(kw)) score += 3
-    else if (kw && textHay.includes(kw)) score += 1
+    if (!kw) continue
+    if (field === 'tags' || field === 'any') {
+      if (tagHay.includes(kw)) score += 3
+      if (field !== 'any') continue
+    }
+    if (field === 'description' || field === 'any') {
+      if (descHay.includes(kw)) score += 2
+      if (field !== 'any') continue
+    }
+    if (field === 'usage' || field === 'any') {
+      if (usageHay.includes(kw)) score += 2
+      if (field !== 'any') continue
+    }
+    if (field === 'note' || field === 'any') {
+      if (noteHay.includes(kw)) score += 1
+    }
   }
   return score
 }
@@ -363,8 +386,11 @@ export async function fetchImageBytes(
       if (info.size > maxSize) return reject(`文件超过上限：${info.size} 字节`)
       return await readFile(filePath)
     }
-    // NapCat 有时只给本地路径（没有 file:// 前缀），这里一并支持
-    if (!/^[a-z][a-z0-9+.-]*:/i.test(url) && isAbsolute(url) && !url.startsWith('\\\\')) {
+    // NapCat 有时只给本地路径（没有 file:// 前缀），这里一并支持。
+    // 注意：Windows 盘符 `E:\...` 会被协议正则当成 scheme，必须先判盘符再判 scheme。
+    const isWinDrive = /^[a-z]:[\\/]/i.test(url)
+    const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(url)
+    if ((isWinDrive || !hasScheme) && isAbsolute(url) && !url.startsWith('\\\\')) {
       if (!filePathAllowed(url, options.allowedFileRoots)) return reject(`本地路径不在白名单：${url}`)
       const info = await stat(url)
       if (!info.isFile()) return reject(`不是普通文件：${url}`)
