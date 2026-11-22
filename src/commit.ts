@@ -35,6 +35,18 @@ export async function commitCollected(
   source: 'passive' | 'active',
 ): Promise<void> {
   const { library, semantic, config } = deps
+  // 被动收集 note 模板（collect.noteTemplate）：统一出口应用，评审补跑/积压处理同样生效；
+  // verdict 已带 note（主动收藏）时不覆盖
+  if (source === 'passive' && !verdict.note) {
+    const template = (config.collect.noteTemplate ?? '').trim()
+    if (template) {
+      const rows = await deps.ctx.database.get('stickerpro_occurrence', { pHash })
+      const guildId = String(rows[0]?.guildId ?? '')
+      const now = new Date()
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      verdict.note = template.replaceAll('{guild}', guildId).replaceAll('{date}', date)
+    }
+  }
   await library.upsertMeta(pHash, {
     tags: verdict.tags,
     description: verdict.description,

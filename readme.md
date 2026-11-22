@@ -31,8 +31,8 @@
 
 | 分组 | 内容 |
 | --- | --- |
-| 存储 | 图片库目录、手动导入目录 |
-| 被动收集 | 开关、群列表、计数阈值、pHash 合并半径、记录 TTL |
+| 存储 | 图片库目录、手动导入目录、手动导入 note 模板 |
+| 被动收集 | 开关、群列表、计数阈值、pHash 合并半径、记录 TTL、入库 note 模板 |
 | 评审与档案 | 评审开关、判官模型、无视觉模型的主动收藏描述兜底（默认关）、可自定义的评审/描述提示词 |
 | 表情库 | 收藏上限（LRU 淘汰） |
 | 语义检索 | 向量模型、相似度阈值 |
@@ -78,7 +78,7 @@ chatluna stickerpro import -r     # 重新生成已有图片的描述与标签�
 
 - 导入**不经过评审**，但会调用判官模型（`review.model`）生成 description/tags/usageHint；
 - 按 pHash 去重：库里已有的图自动跳过，重复执行安全；`-r` 则更新已有档案不动 note/source；
-- note 模板可在「存储 → 手动导入 note 模板」自定义（`{file}` 会替换成文件名，留空则不写 note）；
+- note 模板可在「存储 → 手动导入 note 模板」自定义（`{file}` 会替换成文件名，留空则不写 note），可写如'这是主人提前导入的表情包，我可以后续自己再调整它的描述'；
 - 聊天窗口只回一条“已成功导入 X 张”（刷新为“已成功更新 X 张”），逐张描述与失败明细在日志里；
 - 原图原字节入库，`note` 记录原文件名，`source` 标记为 `manual`；
 - 原文件保留在 `temp/` 目录，确认无误后可自行清理。
@@ -91,6 +91,14 @@ node ../../node_modules/tsx/dist/cli.mjs test/smoke.ts   # 冒烟测试（纯函
 ```
 
 ## 更新日志
+
+### 1.3.0
+
+- **被动收集 note 模板**：新增 `collect.noteTemplate`（默认空=不写 note），支持
+  `{guild}`（收集群号）、`{date}`（入库日期）占位符；在统一入库出口 `commitCollected` 应用，
+  评审补跑/积压处理的被动收藏同样生效；note 会一并进入语义向量文本（旧条目需
+  `rebuild-index` 刷新）。
+- **调整部分文档**
 
 ### 1.2.0
 
@@ -124,3 +132,4 @@ node ../../node_modules/tsx/dist/cli.mjs test/smoke.ts   # 冒烟测试（纯函
 ### 1.0.0
 
 - 插件首次发布
+- 插件灵感来源wj6ej3ck6y3（[chatluna-sticker](https://github.com/wj6ej3ck6y3/koishi-plugin-chatluna-sticker)），参考了部分实现思路并优化了实现方式，非常感谢

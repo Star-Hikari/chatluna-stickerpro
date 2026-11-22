@@ -35,6 +35,8 @@ export interface Config {
     phashThreshold: number
     ttlDays: number
     maxDownloadKb: number
+    /** 被动收集入库成功的 note 模板（{guild}=群号、{date}=日期；留空不写 note） */
+    noteTemplate: string
   }
   review: {
     enabled: boolean
@@ -109,6 +111,9 @@ const CollectGroup = Schema.object({
     .min(256)
     .hidden()
     .description('【高级】单图下载/采集字节上限，超限丢弃。'),
+  noteTemplate: Schema.string()
+    .default('')
+    .description('被动收集入库成功时写入的 note 模板：{guild}=群号、{date}=入库日期；留空则不写 note。'),
 }).description('被动收集')
 
 // ───────── 分组 3：评审与档案 ─────────
