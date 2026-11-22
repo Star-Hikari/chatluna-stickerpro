@@ -140,6 +140,17 @@ check(
   'search/peek 带 PERCEPTION_NOTE',
   TOOL_MODEL_DESCRIPTIONS.search.includes(PERCEPTION_NOTE) && TOOL_MODEL_DESCRIPTIONS.peek.includes(PERCEPTION_NOTE),
 )
+// latest 同名歧义回归：peek 说的是"表情库里最新收藏"，save 收的是"聊天里最近发的"，且 save 不再引导先 peek
+check('peek 的 latest 明确指表情库', TOOL_MODEL_DESCRIPTIONS.peek.includes('表情库里最新收藏'))
+check('peek 说明看不到未入库新图', TOOL_MODEL_DESCRIPTIONS.peek.includes('还没入库'))
+check(
+  'save 用 recent 且与库内 latest 区分',
+  TOOL_MODEL_DESCRIPTIONS.save.includes('target=recent') && TOOL_MODEL_DESCRIPTIONS.save.includes('不是表情库里'),
+)
+check(
+  'save 不再让先 peek 看聊天图',
+  !TOOL_MODEL_DESCRIPTIONS.save.includes('先用 sticker_peek 看一眼'),
+)
 check('评审契约含 collect 字段', REVIEW_JSON_CONTRACT.includes('"collect"'))
 check('默认模板含 DUP_BLOCK 占位符', REVIEW_PROMPT_DEFAULT.includes('{{DUP_BLOCK}}'))
 check('默认模板未被契约污染', !REVIEW_PROMPT_DEFAULT.includes('"collect"'))

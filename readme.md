@@ -92,6 +92,14 @@ node ../../node_modules/tsx/dist/cli.mjs test/smoke.ts   # 冒烟测试（纯函
 
 ## 更新日志
 
+### 1.4.0
+
+- **`latest` 同名歧义修复**：`sticker_peek` 的 `latest` 明确为“**表情库里**最新收藏的那张
+  （不是聊天里最新发的图）”，并说明它看不到尚未入库的新图；`sticker_save` 的 `target`
+  由 `latest` 改名为 **`recent`**（旧名 `latest` 保留为兼容别名），语义是“聊天里最近发的那张”。
+- **收藏文案纠错**：删掉“看不清就先 peek”的误导（peek 只能看已入库图），
+  改为“直接看聊天里的图，或让对方再发一次”。
+
 ### 1.3.0
 
 - **被动收集 note 模板**：新增 `collect.noteTemplate`（默认空=不写 note），支持

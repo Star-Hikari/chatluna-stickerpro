@@ -227,7 +227,8 @@ export function registerTools(deps: ToolsDeps): void {
   } as ChatLunaTool, deps)
 
   /**
-   * peek 的目标解析：r#/pHash 前缀，或特殊词 latest（库里最新收的那张）/ reply（被引用消息里那张）。
+   * peek 的目标解析：r#/pHash 前缀，或特殊词 latest（**表情库里**最新收藏的那张）/ reply（被引用消息里那张）。
+   * 注意与 sticker_save 的 recent（聊天里最近发的图）区分：两者语义不同，不能混用。
    * reply 走"下载 → pHash → 库内归并查找"，没入库就如实告诉模型，别假装看到。
    */
   async function resolvePeekTarget(
@@ -392,7 +393,9 @@ export function registerTools(deps: ToolsDeps): void {
           schema: z.object({
             refs: z
               .array(z.string())
-              .describe('要看哪几张：编号（r1、r2）、pHash 前缀，或 latest（最新收的那张）/ reply（被引用的那张）'),
+              .describe(
+                '要看哪几张：编号（r1、r2）或 pHash 前缀；latest = 表情库里最新收藏的那张（不是聊天里最新发的图）；reply = 被引用消息里那张。只能看已入库的图',
+              ),
           }),
         },
       ),
@@ -476,7 +479,7 @@ export function registerTools(deps: ToolsDeps): void {
       tool(
         async (
           input: {
-            target?: 'reply' | 'latest'
+            target?: 'reply' | 'recent' | 'latest'
             description?: string
             tags?: string[]
             usageHint?: string
@@ -496,13 +499,13 @@ export function registerTools(deps: ToolsDeps): void {
             // session.quote 是 Satori 的访问器（event.message.quote），比手挖 session.message 更稳
             const quote: any = (session as any).quote ?? (session as any).message?.quote ?? (session as any).event?.message?.quote
             if (!quote) {
-              return '这条消息没有引用任何内容，我没法收"引用里那张图"。可以改用 latest 收刚发的那张。'
+              return '这条消息没有引用任何内容，我没法收"引用里那张图"。可以改用 target=recent 收聊天里刚发的那张。'
             }
             const qEls = Array.isArray(quote.elements) ? quote.elements : quote.message?.elements
             urls = qEls ? extractImageSources(qEls) : []
             sourceHint = '引用的那张'
             if (!urls.length) {
-              return '你引用的那条消息里没有图片，收不了。确认引用的是带图的消息，或改用 latest。'
+              return '你引用的那条消息里没有图片，收不了。确认引用的是带图的消息，或改用 target=recent。'
             }
           } else {
             urls = extractImageSources(session.elements as readonly any[])
@@ -521,7 +524,7 @@ export function registerTools(deps: ToolsDeps): void {
               sourceHint = mine.length ? '刚发的' : '最近收到的'
               if (picked.length) {
                 deps.logger.debug(
-                  `[save] latest 回溯 ${picked.length} 张（${mine.length ? '本人近 5 分钟' : '会话最近'}）：${picked[0].url.slice(0, 100)}`,
+                  `[save] recent 回溯 ${picked.length} 张（${mine.length ? '本人近 5 分钟' : '会话最近'}）：${picked[0].url.slice(0, 100)}`,
                 )
               }
             }
@@ -530,7 +533,7 @@ export function registerTools(deps: ToolsDeps): void {
             return '这次没能从消息里拿到图片：当前消息没有图，也没找到这个会话最近含图的记录。可以让对方再发一次，或引用那张图再让我收。'
           }
 
-          // 候选已按优先级排好（reply=消息内顺序；latest=新→旧），某张地址失效时顺延下一张
+          // 候选已按优先级排好（reply=消息内顺序；recent=新→旧），某张地址失效时顺延下一张
           let bytes: Buffer | null = null
           const failures: string[] = []
           for (const candidate of urls.slice(0, 3)) {
@@ -566,7 +569,7 @@ export function registerTools(deps: ToolsDeps): void {
           }
 
           await storage.saveImage(canonical, bytes)
-          // 已成功落盘，把用过的候选移出缓存，避免下一次 latest 又取到同一张
+          // 已成功落盘，把用过的候选移出缓存，避免下一次 recent 又取到同一张
           forgetImages(session, urls)
 
           // 档案由我（聊天模型）亲笔写，判官不代笔：description 是必填的自我描述。
@@ -619,9 +622,11 @@ export function registerTools(deps: ToolsDeps): void {
           description: TOOL_MODEL_DESCRIPTIONS.save,
           schema: z.object({
             target: z
-              .enum(['reply', 'latest'])
+              .enum(['reply', 'recent', 'latest'])
               .optional()
-              .describe('收引用消息里的图（reply，默认）还是最近收到的图（latest，当前消息没图时会回看最近记录）'),
+              .describe(
+                '收哪张：reply=引用消息里那张（默认）；recent=聊天里最近发的那张（当前消息没图时会回看最近记录）。latest 是 recent 的旧名，仍可用。注意 recent 指聊天，不是表情库',
+              ),
             description: z
               .string()
               .min(1)
@@ -699,7 +704,7 @@ export function registerTools(deps: ToolsDeps): void {
           name: 'sticker_update',
           description: TOOL_MODEL_DESCRIPTIONS.update,
           schema: z.object({
-            ref: z.string().describe('要改的表情编号（r1…）、pHash 前缀，或 latest（最近收的那张）'),
+            ref: z.string().describe('要改的表情编号（r1…）、pHash 前缀，或 latest（表情库里最近收的那张，不是聊天里最新发的）'),
             description: z.string().max(300).optional().describe('改写后的简短描述（氛围/用途为主，不猜身份）'),
             tags: z.array(z.string()).optional().describe('新的标签列表（3-6 个情绪/场景短词）'),
             usageHint: z.string().max(120).optional().describe('聊天里什么时候发这张最合适'),
